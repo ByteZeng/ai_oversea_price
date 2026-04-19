@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.venv/
+venv/
+ENV/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Secrets（请勿提交密钥）
+.env
+.env.*
+!.env.example
+
+# Jupyter / 本地导出（按需删除此行若需入库）
+.ipynb_checkpoints/
