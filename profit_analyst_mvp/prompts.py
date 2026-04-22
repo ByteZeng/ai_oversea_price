@@ -11,6 +11,12 @@ class SqlPrompt:
     user: str
 
 
+@dataclass(frozen=True)
+class AnalysisPrompt:
+    system: str
+    user: str
+
+
 def build_sql_prompt(*, question: str, schema: TableSchema, days_window: int = 30) -> SqlPrompt:
     # 目标：稳定产出可执行 SQL；强约束只输出 SQL 文本
     system = (
@@ -56,4 +62,38 @@ def build_sql_repair_prompt(*, question: str, schema: TableSchema, bad_sql: str,
         "请输出修复后的 SQL（仅 SQL）："
     )
     return SqlPrompt(system=system, user=user)
+
+
+def build_analysis_prompt(
+    *,
+    question: str,
+    sql: str,
+    table_preview_csv: str,
+    columns: list[str],
+    row_count: int,
+) -> AnalysisPrompt:
+    system = (
+        "你是严谨的数据分析助手。你只能基于我提供的“查询结果表”进行分析。\n"
+        "硬规则：\n"
+        "1) 不得编造表外字段、表外口径、表外数值；不确定就明确说“无法从结果表判断”。\n"
+        "2) 结论必须引用结果表中的证据（至少 2 条），并使用中文。\n"
+        "3) 优先输出可解释的结论与下一步建议（例如建议增加哪些分组/时间窗对比）。\n"
+        "4) 输出格式固定为：\n"
+        "【结论】... \n"
+        "【证据】- ...\n"
+        "【可能原因】...（如果结果表不足以判断，则写“需进一步查询”）\n"
+        "【下一步SQL建议】...（给 1-2 个可执行的方向，不要求给完整 SQL）\n"
+    )
+
+    user = (
+        "用户问题：\n"
+        f"{question}\n\n"
+        "本次执行 SQL：\n"
+        f"{sql}\n\n"
+        f"结果表行数：{row_count}\n"
+        f"结果表字段：{', '.join(columns)}\n\n"
+        "结果表（CSV，已截断）：\n"
+        f"{table_preview_csv}\n"
+    )
+    return AnalysisPrompt(system=system, user=user)
 

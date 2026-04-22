@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from profit_analyst_mvp.db import connect, get_db_path
-from profit_analyst_mvp.orchestrator import run_question
+from profit_analyst_mvp.orchestrator import generate_conclusion, run_query
 
 APP_TITLE = "AI 数据分析助手（第一阶段）"
 
@@ -20,6 +20,7 @@ def main() -> None:
         st.session_state.sql = ""
         st.session_state.result_df = pd.DataFrame()
         st.session_state.conclusion = ""
+        st.session_state.has_query_result = False
         st.session_state.error = ""
 
     with st.container(border=True):
@@ -31,11 +32,13 @@ def main() -> None:
             height=100,
         )
 
-        cols = st.columns([1, 1, 3])
+        cols = st.columns([1, 1, 1, 2])
         with cols[0]:
             run_clicked = st.button("开始分析", type="primary", use_container_width=True)
         with cols[1]:
             reset_clicked = st.button("重置", use_container_width=True)
+        with cols[2]:
+            analyze_clicked = st.button("生成结论", use_container_width=True)
 
     if reset_clicked:
         st.session_state.last_run = None
@@ -43,6 +46,7 @@ def main() -> None:
         st.session_state.sql = ""
         st.session_state.result_df = pd.DataFrame()
         st.session_state.conclusion = ""
+        st.session_state.has_query_result = False
         st.session_state.error = ""
         st.rerun()
 
@@ -54,13 +58,35 @@ def main() -> None:
 
             conn = connect()
             try:
-                sql, df = run_question(question=question, conn=conn)
+                sql, df = run_query(question=question, conn=conn)
             finally:
                 conn.close()
 
             st.session_state.sql = sql
             st.session_state.result_df = df
-            st.session_state.conclusion = "（M3 阶段）已返回 SQL 查询结果；M4 将补齐基于表格的中文结论。"
+            st.session_state.conclusion = ""
+            st.session_state.has_query_result = True
+            st.session_state.error = ""
+            st.session_state.last_run = pd.Timestamp.now().isoformat(timespec="seconds")
+        except Exception as e:
+            st.session_state.error = str(e)
+
+    if analyze_clicked:
+        try:
+            question = (st.session_state.question or "").strip()
+            if not question:
+                raise ValueError("请先输入问题。")
+            if not st.session_state.sql or st.session_state.result_df is None or st.session_state.result_df.empty:
+                raise ValueError("请先点击「开始分析」生成 SQL 并执行查询，确认结果无异常后再生成结论。")
+
+            # 结论仅依赖已生成的 SQL + 已查询到的结果表
+            conclusion = generate_conclusion(
+                question=question,
+                sql=st.session_state.sql,
+                df=st.session_state.result_df,
+            )
+
+            st.session_state.conclusion = conclusion
             st.session_state.error = ""
             st.session_state.last_run = pd.Timestamp.now().isoformat(timespec="seconds")
         except Exception as e:
@@ -84,7 +110,10 @@ def main() -> None:
             st.dataframe(st.session_state.result_df, use_container_width=True, hide_index=True)
 
         st.subheader("结论")
-        st.write(st.session_state.conclusion or "（暂无结论）")
+        if st.session_state.conclusion:
+            st.write(st.session_state.conclusion)
+        else:
+            st.info("尚未生成结论。请先核对 SQL 与结果表，再点击「生成结论」。")
 
     st.divider()
     st.subheader("错误信息")

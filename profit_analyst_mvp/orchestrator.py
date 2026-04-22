@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import pandas as pd
 
 from profit_analyst_mvp.db import query_df
-from profit_analyst_mvp.llm import chat_completion, load_llm_config
-from profit_analyst_mvp.prompts import build_sql_prompt, build_sql_repair_prompt
+from profit_analyst_mvp.llm import chat_completion, load_llm_analysis_config, load_llm_config
+from profit_analyst_mvp.prompts import build_analysis_prompt, build_sql_prompt, build_sql_repair_prompt
 from profit_analyst_mvp.schema import DEFAULT_SQLITE_TABLE, load_table_schema, rewrite_to_sqlite_table
 from profit_analyst_mvp.sql_guard import validate_sql
 
@@ -17,6 +17,8 @@ from profit_analyst_mvp.sql_guard import validate_sql
 class OrchestratorConfig:
     days_window: int = 30
     max_rows: int = 200
+    max_rows_for_analysis: int = 50
+    max_cols_for_analysis: int = 12
     allow_with: bool = True
 
 
@@ -107,16 +109,63 @@ def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorCo
     return sql2_norm
 
 
-def run_question(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig | None = None) -> tuple[str, pd.DataFrame]:
-    cfg = cfg or OrchestratorConfig(
+def _load_orchestrator_config() -> OrchestratorConfig:
+    return OrchestratorConfig(
         days_window=int((os.getenv("DEFAULT_DAYS_WINDOW") or "").strip() or "30"),
         max_rows=int((os.getenv("MAX_RESULT_ROWS") or "").strip() or "200"),
+        max_rows_for_analysis=int((os.getenv("MAX_ANALYSIS_ROWS") or "").strip() or "50"),
+        max_cols_for_analysis=int((os.getenv("MAX_ANALYSIS_COLS") or "").strip() or "12"),
         allow_with=True,
     )
+
+
+def run_query(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig | None = None) -> tuple[str, pd.DataFrame]:
+    cfg = cfg or _load_orchestrator_config()
 
     sql = generate_sql(question=question, conn=conn, cfg=cfg)
     sql_exec = rewrite_to_sqlite_table(sql)
     sql_exec = _apply_limit(sql_exec, cfg.max_rows)
     df = query_df(conn, sql_exec)
     return sql, df
+
+
+def run_question(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig | None = None) -> tuple[str, pd.DataFrame, str]:
+    cfg = cfg or _load_orchestrator_config()
+    sql, df = run_query(question=question, conn=conn, cfg=cfg)
+    conclusion = generate_conclusion(question=question, sql=sql, df=df, cfg=cfg)
+    return sql, df, conclusion
+
+
+def _df_preview_csv(df: pd.DataFrame, *, max_rows: int, max_cols: int) -> tuple[str, list[str], int]:
+    df2 = df.copy()
+    row_count = int(df2.shape[0])
+    if df2.shape[1] > max_cols:
+        df2 = df2.iloc[:, :max_cols]
+    cols = [str(c) for c in df2.columns]
+    df2 = df2.head(max_rows)
+    # 统一字符串，避免 NaN/对象导致 CSV 出错
+    df2 = df2.fillna("")
+    csv_text = df2.to_csv(index=False)
+    return csv_text, cols, row_count
+
+
+def generate_conclusion(*, question: str, sql: str, df: pd.DataFrame, cfg: OrchestratorConfig | None = None) -> str:
+    cfg = cfg or _load_orchestrator_config()
+    llm_cfg = load_llm_analysis_config()
+    preview_csv, cols, row_count = _df_preview_csv(df, max_rows=cfg.max_rows_for_analysis, max_cols=cfg.max_cols_for_analysis)
+    p = build_analysis_prompt(
+        question=question,
+        sql=sql,
+        table_preview_csv=preview_csv,
+        columns=cols,
+        row_count=row_count,
+    )
+    return chat_completion(
+        cfg=llm_cfg,
+        messages=[
+            {"role": "system", "content": p.system},
+            {"role": "user", "content": p.user},
+        ],
+        temperature=0.2,
+    )
 

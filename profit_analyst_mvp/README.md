@@ -26,6 +26,7 @@ streamlit run profit_analyst_mvp/app.py
 $env:LLM_API_KEY="你的key"
 $env:LLM_BASE_URL="https://api.deepseek.com"   # 可选
 $env:LLM_MODEL="deepseek-chat"                 # 可选
+$env:LLM_MODEL_ANALYSIS="deepseek-chat"        # 可选：用于 M4 结论生成
 ```
 
 ## M2：SQLite 初始化（从模拟订单 Excel 导入）
