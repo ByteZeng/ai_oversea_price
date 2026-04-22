@@ -19,5 +19,11 @@ ENV/
 .env.*
 !.env.example
 
+# profit_analyst_mvp 本地数据（不入库）
+profit_analyst_mvp/data/*.db
+profit_analyst_mvp/data/*.sqlite
+profit_analyst_mvp/data/*.sqlite3
+profit_analyst_mvp/data/*.xlsx
+
 # Jupyter / 本地导出（按需删除此行若需入库）
 .ipynb_checkpoints/

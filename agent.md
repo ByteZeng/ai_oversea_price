@@ -76,9 +76,8 @@
 
 ### 4.3 派生指标（不落表，只在 SQL 里算）
 
-- `revenue = price`
-- `profit = price - cost - shipping_cost`
-- `margin = profit / NULLIF(price, 0)`
+- `订单毛利率 = 订单毛利润 / 销售额`
+- `订单净利率 = 订单净利润 / 销售额`
 
 ---
 
