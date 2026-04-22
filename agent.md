@@ -90,7 +90,6 @@
 - `FROM` 仅允许 `yibai_oversea.dashbord_new_data1`
 - 禁止 `JOIN`
 - 字段只能来自白名单（白名单来源：对照表/补充清单/以及程序从 SQLite schema 读取）
-- 聚合优先（按 `country`、按日/周），避免大量明细
 - 默认时间对比：近 N 天 vs 前 N 天（N 固定或配置）
 
 ### 5.2 必须拦截的危险关键字/语句
