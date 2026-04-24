@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from profit_analyst_mvp.schema import TableSchema
+from profit_analyst_mvp.dicts import FieldHint, MetricHint, field_hints_to_prompt_text, metric_hints_to_prompt_text
 
 
 @dataclass(frozen=True)
@@ -17,8 +18,17 @@ class AnalysisPrompt:
     user: str
 
 
-def build_sql_prompt(*, question: str, schema: TableSchema, days_window: int = 30) -> SqlPrompt:
+def build_sql_prompt(
+    *,
+    question: str,
+    schema: TableSchema,
+    days_window: int = 30,
+    field_hints: list[FieldHint] | None = None,
+    metric_hints: list[MetricHint] | None = None,
+) -> SqlPrompt:
     # 目标：稳定产出可执行 SQL；强约束只输出 SQL 文本
+    field_hints = field_hints or []
+    metric_hints = metric_hints or []
     system = (
         "你是资深数据分析工程师。你的任务是把用户问题转成可在 SQLite 执行的 SQL。\n"
         "必须严格遵守以下硬规则：\n"
@@ -30,6 +40,10 @@ def build_sql_prompt(*, question: str, schema: TableSchema, days_window: int = 3
         "6) 时间对比优先采用“近 N 天 vs 前 N 天”。N="
         f"{days_window}\n"
         "\n"
+        "字段对照表（从用户问题召回的候选字段，仅作语义参考；真正可用字段仍以白名单为准）：\n"
+        f"{field_hints_to_prompt_text(field_hints)}\n"
+        "指标字典（从用户问题召回的候选指标口径，可直接用于计算；必须保证 required_fields 均在白名单中）：\n"
+        f"{metric_hints_to_prompt_text(metric_hints)}\n"
         "表与字段：\n"
         f"{schema.to_prompt_text()}\n"
     )
@@ -43,12 +57,27 @@ def build_sql_prompt(*, question: str, schema: TableSchema, days_window: int = 3
     return SqlPrompt(system=system, user=user)
 
 
-def build_sql_repair_prompt(*, question: str, schema: TableSchema, bad_sql: str, error: str, days_window: int = 30) -> SqlPrompt:
+def build_sql_repair_prompt(
+    *,
+    question: str,
+    schema: TableSchema,
+    bad_sql: str,
+    error: str,
+    days_window: int = 30,
+    field_hints: list[FieldHint] | None = None,
+    metric_hints: list[MetricHint] | None = None,
+) -> SqlPrompt:
+    field_hints = field_hints or []
+    metric_hints = metric_hints or []
     system = (
         "你是资深数据分析工程师。你需要修复 SQL，使其满足硬规则并可在 SQLite 执行。\n"
         "必须严格遵守：只输出一条 SQL；只允许 SELECT；禁止 JOIN；仅用白名单字段；FROM 仅允许单表。\n"
         f"N={days_window}\n"
         "\n"
+        "字段对照表（从用户问题召回的候选字段，仅作语义参考；真正可用字段仍以白名单为准）：\n"
+        f"{field_hints_to_prompt_text(field_hints)}\n"
+        "指标字典（从用户问题召回的候选指标口径，可直接用于计算；必须保证 required_fields 均在白名单中）：\n"
+        f"{metric_hints_to_prompt_text(metric_hints)}\n"
         "表与字段：\n"
         f"{schema.to_prompt_text()}\n"
     )

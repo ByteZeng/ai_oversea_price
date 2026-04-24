@@ -75,12 +75,13 @@ def validate_sql(
             return GuardResult(False, f"包含危险关键字：{kw}")
 
     # 表名限制：必须包含 FROM 且只能是允许的表
-    m = re.search(r'\bfrom\s+("?[a-zA-Z0-9_.]+"?)', sql, flags=re.IGNORECASE)
-    if not m:
+    # 注意：允许 UNION 后可能出现多个 SELECT/多个 FROM；这里校验所有 FROM 引用的表名
+    from_tables = [m.group(1).strip('"') for m in re.finditer(r'\bfrom\s+("?[a-zA-Z0-9_.]+"?)', sql, flags=re.IGNORECASE)]
+    if not from_tables:
         return GuardResult(False, "SQL 必须包含 FROM 子句。")
-    table = m.group(1).strip('"')
-    if table not in allowed_tables:
-        return GuardResult(False, f"不允许的表名：{table}")
+    for table in from_tables:
+        if table not in allowed_tables:
+            return GuardResult(False, f"不允许的表名：{table}")
 
     # 字段白名单（尽力而为的轻量校验）：
     # - 忽略字符串字面量
@@ -99,6 +100,11 @@ def validate_sql(
         "and",
         "or",
         "not",
+        # 集合操作（允许用于对比/拼接结果）
+        "union",
+        "all",
+        "intersect",
+        "except",
         "null",
         "is",
         "in",

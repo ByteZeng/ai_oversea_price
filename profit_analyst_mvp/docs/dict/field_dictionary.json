@@ -1,0 +1,332 @@
+{
+  "meta": {
+    "name": "field_dictionary",
+    "version": "0.1.0",
+    "source_table": "dashbord_new_data1",
+    "notes": [
+      "由 docs/数据库字段中英文对照表.xlsx 自动生成。",
+      "字段 type 先置为 unknown，后续可按真实 schema 补充为 date/text/number 等。",
+      "aliases 默认包含中文名与英文列名，可按业务补充同义词/口语表达。"
+    ]
+  },
+  "fields": [
+    {
+      "column": "order_id",
+      "zh": "订单编号",
+      "en": "",
+      "aliases": [
+        "order_id",
+        "订单编号"
+      ],
+      "type": "unknown",
+      "remark": "主键"
+    },
+    {
+      "column": "pay_status",
+      "zh": "支付状态",
+      "en": "",
+      "aliases": [
+        "pay_status",
+        "支付状态"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "refound_status",
+      "zh": "退款状态",
+      "en": "",
+      "aliases": [
+        "refound_status",
+        "退款状态"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "platform_code",
+      "zh": "平台代码",
+      "en": "",
+      "aliases": [
+        "platform_code",
+        "平台代码"
+      ],
+      "type": "unknown",
+      "remark": "常用筛选维度，例如：AMAZON"
+    },
+    {
+      "column": "sku",
+      "zh": "SKU（系统商品编码）",
+      "en": "",
+      "aliases": [
+        "SKU（系统商品编码）",
+        "sku"
+      ],
+      "type": "unknown",
+      "remark": "常用筛选字段"
+    },
+    {
+      "column": "seller_sku",
+      "zh": "卖家 SKU",
+      "en": "",
+      "aliases": [
+        "seller_sku",
+        "卖家 SKU"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "account_id",
+      "zh": "店铺账户 ID",
+      "en": "",
+      "aliases": [
+        "account_id",
+        "店铺账户 ID"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "paytime",
+      "zh": "支付时间",
+      "en": "",
+      "aliases": [
+        "paytime",
+        "支付时间"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "total_price",
+      "zh": "订单销售额",
+      "en": "",
+      "aliases": [
+        "total_price",
+        "订单销售额"
+      ],
+      "type": "unknown",
+      "remark": "销售额"
+    },
+    {
+      "column": "true_profit_new1",
+      "zh": "订单毛利润",
+      "en": "",
+      "aliases": [
+        "true_profit_new1",
+        "订单毛利润"
+      ],
+      "type": "unknown",
+      "remark": "订单毛利润"
+    },
+    {
+      "column": "real_profit",
+      "zh": "订单净利润",
+      "en": "",
+      "aliases": [
+        "real_profit",
+        "订单净利润"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "warehouse_name",
+      "zh": "发货子仓名称",
+      "en": "",
+      "aliases": [
+        "warehouse_name",
+        "发货子仓名称"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "warehouse",
+      "zh": "发货大仓",
+      "en": "",
+      "aliases": [
+        "warehouse",
+        "发货大仓"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "quantity",
+      "zh": "销量",
+      "en": "",
+      "aliases": [
+        "quantity",
+        "销量"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "new_price",
+      "zh": "订单sku成本",
+      "en": "",
+      "aliases": [
+        "new_price",
+        "订单sku成本"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "release_money",
+      "zh": "销库金额",
+      "en": "",
+      "aliases": [
+        "release_money",
+        "销库金额"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段"
+    },
+    {
+      "column": "sales_status",
+      "zh": "订单sku销售状态",
+      "en": "",
+      "aliases": [
+        "sales_status",
+        "订单sku销售状态"
+      ],
+      "type": "unknown",
+      "remark": "dashbord_order() SQL 查询字段；含过滤条件：不含「总计」"
+    },
+    {
+      "column": "site",
+      "zh": "收货国家",
+      "en": "",
+      "aliases": [
+        "site",
+        "收货国家"
+      ],
+      "type": "unknown",
+      "remark": "常用筛选字段：国家"
+    },
+    {
+      "column": "ship_name",
+      "zh": "发货尾程渠道",
+      "en": "",
+      "aliases": [
+        "ship_name",
+        "发货尾程渠道"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "commission_fees",
+      "zh": "平台佣金",
+      "en": "",
+      "aliases": [
+        "commission_fees",
+        "平台佣金"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "pay_cost",
+      "zh": "支付税费",
+      "en": "",
+      "aliases": [
+        "pay_cost",
+        "支付税费"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "seller_discount",
+      "zh": "折扣费用",
+      "en": "",
+      "aliases": [
+        "seller_discount",
+        "折扣费用"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "escrow_tax",
+      "zh": "消费税金",
+      "en": "",
+      "aliases": [
+        "escrow_tax",
+        "消费税金"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "purchase_cost_new1",
+      "zh": "订单成本",
+      "en": "",
+      "aliases": [
+        "purchase_cost_new1",
+        "订单成本"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "shipping_fee",
+      "zh": "订单尾程",
+      "en": "",
+      "aliases": [
+        "shipping_fee",
+        "订单尾程"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "first_carrier_cost",
+      "zh": "订单头程",
+      "en": "",
+      "aliases": [
+        "first_carrier_cost",
+        "订单头程"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "processing",
+      "zh": "订单海外仓处理费",
+      "en": "",
+      "aliases": [
+        "processing",
+        "订单海外仓处理费"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "extra",
+      "zh": "订单尾程附加费",
+      "en": "",
+      "aliases": [
+        "extra",
+        "订单尾程附加费"
+      ],
+      "type": "unknown"
+    },
+    {
+      "column": "develop_source_name",
+      "zh": "订单sku开发来源",
+      "en": "",
+      "aliases": [
+        "develop_source_name",
+        "订单sku开发来源"
+      ],
+      "type": "unknown",
+      "remark": "常用筛选维度，例如：供应商货盘"
+    },
+    {
+      "column": "is_jp",
+      "zh": "是否精品店铺订单",
+      "en": "",
+      "aliases": [
+        "is_jp",
+        "是否精品店铺订单"
+      ],
+      "type": "unknown",
+      "remark": "默认选0"
+    }
+  ]
+}

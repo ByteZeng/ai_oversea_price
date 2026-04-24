@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "name": "metric_dictionary",
+    "version": "0.1.0",
+    "notes": [
+      "用于 LLM 指标召回与口径统一：先从 aliases/metric_name/metric_key 召回指标，再将 formula_sql 组合进查询计划与 SQL。",
+      "definition_type=sql_expr：直接放进 SELECT；definition_type=sql_template：用于比率、除零等情况（仍建议单语句）。",
+      "required_fields 用于生成前校验：若 schema 不包含这些字段，则提示用户或选择替代指标。"
+    ]
+  },
+  "metrics": [
+    {
+      "metric_key": "orders",
+      "metric_name": "订单数",
+      "aliases": ["订单量", "下单数", "订单"],
+      "definition_type": "sql_expr",
+      "formula_sql": "COUNT(1)",
+      "required_fields": [],
+      "unit": "count",
+      "value_type": "count",
+      "status": "active"
+    },
+    {
+      "metric_key": "gmv",
+      "metric_name": "GMV",
+      "aliases": ["成交额", "销售额", "收入"],
+      "definition_type": "sql_expr",
+      "formula_sql": "SUM(total_price)",
+      "required_fields": ["total_price"],
+      "unit": "CNY",
+      "value_type": "money",
+      "status": "active"
+    },
+    {
+      "metric_key": "profit_rate",
+      "metric_name": "订单毛利润率",
+      "aliases": ["毛利润率", "利润占比", "订单利润率%"],
+      "definition_type": "sql_template",
+      "formula_sql": "CASE WHEN SUM(true_profit_new1)=0 THEN NULL ELSE SUM(true_profit_new1)*1.0/SUM(total_price) END",
+      "required_fields": ["total_price", "true_profit_new1"],
+      "unit": "%",
+      "value_type": "percent",
+      "status": "active"
+    },
+    {
+      "metric_key": "net_profit_rate",
+      "metric_name": "订单净利润率",
+      "aliases": ["净利润率", "净利润占比", "订单净利润率%"],
+      "definition_type": "sql_template",
+      "formula_sql": "CASE WHEN SUM(real_profit)=0 THEN NULL ELSE SUM(real_profit)*1.0/SUM(total_price) END",
+      "required_fields": ["total_price", "real_profit"],
+      "unit": "%",
+      "value_type": "percent",
+      "status": "active"
+    }
+  ]
+}
+

@@ -7,6 +7,12 @@ from dataclasses import dataclass
 import pandas as pd
 
 from profit_analyst_mvp.db import query_df
+from profit_analyst_mvp.dicts import (
+    load_field_dictionary,
+    load_metric_dictionary,
+    retrieve_field_hints,
+    retrieve_metric_hints,
+)
 from profit_analyst_mvp.llm import chat_completion, load_llm_analysis_config, load_llm_config
 from profit_analyst_mvp.prompts import build_analysis_prompt, build_sql_prompt, build_sql_repair_prompt
 from profit_analyst_mvp.schema import DEFAULT_SQLITE_TABLE, load_table_schema, rewrite_to_sqlite_table
@@ -60,7 +66,24 @@ def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorCo
     schema = load_table_schema(conn, table=DEFAULT_SQLITE_TABLE)
     llm_cfg = load_llm_config()
 
-    p = build_sql_prompt(question=question, schema=schema, days_window=cfg.days_window)
+    # 读取字典并做“候选召回”，用于提升 LLM 对字段/指标口径的理解
+    try:
+        fields = load_field_dictionary()
+        metrics = load_metric_dictionary(only_active=True)
+        field_hints = retrieve_field_hints(question, fields, limit=12)
+        metric_hints = retrieve_metric_hints(question, metrics, limit=8)
+    except Exception:
+        # 字典缺失/格式异常不应阻塞主流程
+        field_hints = []
+        metric_hints = []
+
+    p = build_sql_prompt(
+        question=question,
+        schema=schema,
+        days_window=cfg.days_window,
+        field_hints=field_hints,
+        metric_hints=metric_hints,
+    )
     sql = chat_completion(
         cfg=llm_cfg,
         messages=[
@@ -87,6 +110,8 @@ def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorCo
         bad_sql=sql_norm,
         error=guard.reason,
         days_window=cfg.days_window,
+        field_hints=field_hints,
+        metric_hints=metric_hints,
     )
     sql2 = chat_completion(
         cfg=llm_cfg,
