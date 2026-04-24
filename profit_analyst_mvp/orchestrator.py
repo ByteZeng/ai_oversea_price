@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass
+import json
 
 import pandas as pd
 
@@ -14,7 +15,13 @@ from profit_analyst_mvp.dicts import (
     retrieve_metric_hints,
 )
 from profit_analyst_mvp.llm import chat_completion, load_llm_analysis_config, load_llm_config
-from profit_analyst_mvp.prompts import build_analysis_prompt, build_sql_prompt, build_sql_repair_prompt
+from profit_analyst_mvp.prompts import (
+    build_analysis_prompt,
+    build_analysis_prompt_with_evidence,
+    build_followup_sql_prompt,
+    build_sql_prompt,
+    build_sql_repair_prompt,
+)
 from profit_analyst_mvp.schema import DEFAULT_SQLITE_TABLE, load_table_schema, rewrite_to_sqlite_table
 from profit_analyst_mvp.sql_guard import validate_sql
 
@@ -26,6 +33,7 @@ class OrchestratorConfig:
     max_rows_for_analysis: int = 50
     max_cols_for_analysis: int = 12
     allow_with: bool = True
+    max_followup_queries: int = 2
 
 
 def _apply_limit(sql: str, max_rows: int) -> str:
@@ -62,7 +70,29 @@ def _normalize_sql_for_sqlite(sql: str) -> str:
     return s
 
 
-def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig) -> str:
+def _safe_json_loads(s: str) -> dict:
+    try:
+        return json.loads((s or "").strip() or "{}")
+    except Exception:
+        return {}
+
+
+@dataclass
+class EvidenceQuery:
+    purpose: str
+    sql: str
+    df: pd.DataFrame
+
+
+@dataclass
+class FollowupPlanItem:
+    purpose: str
+    sql: str
+    ok: bool
+    reason: str = ""
+
+
+def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig, context: str | None = None) -> str:
     schema = load_table_schema(conn, table=DEFAULT_SQLITE_TABLE)
     llm_cfg = load_llm_config()
 
@@ -79,6 +109,7 @@ def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorCo
 
     p = build_sql_prompt(
         question=question,
+        context=context,
         schema=schema,
         days_window=cfg.days_window,
         field_hints=field_hints,
@@ -106,6 +137,7 @@ def generate_sql(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorCo
     # 失败：做一次修复重试
     p2 = build_sql_repair_prompt(
         question=question,
+        context=context,
         schema=schema,
         bad_sql=sql_norm,
         error=guard.reason,
@@ -141,17 +173,138 @@ def _load_orchestrator_config() -> OrchestratorConfig:
         max_rows_for_analysis=int((os.getenv("MAX_ANALYSIS_ROWS") or "").strip() or "50"),
         max_cols_for_analysis=int((os.getenv("MAX_ANALYSIS_COLS") or "").strip() or "12"),
         allow_with=True,
+        max_followup_queries=int((os.getenv("MAX_FOLLOWUP_QUERIES") or "").strip() or "2"),
     )
 
 
-def run_query(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig | None = None) -> tuple[str, pd.DataFrame]:
+def run_query(
+    *,
+    question: str,
+    conn: sqlite3.Connection,
+    cfg: OrchestratorConfig | None = None,
+    context: str | None = None,
+) -> tuple[str, pd.DataFrame]:
     cfg = cfg or _load_orchestrator_config()
 
-    sql = generate_sql(question=question, conn=conn, cfg=cfg)
+    sql = generate_sql(question=question, conn=conn, cfg=cfg, context=context)
     sql_exec = rewrite_to_sqlite_table(sql)
     sql_exec = _apply_limit(sql_exec, cfg.max_rows)
     df = query_df(conn, sql_exec)
     return sql, df
+
+
+def run_sql(
+    *,
+    sql: str,
+    conn: sqlite3.Connection,
+    cfg: OrchestratorConfig | None = None,
+) -> tuple[str, pd.DataFrame]:
+    """
+    执行用户编辑后的 SQL（只读安全护栏 + 白名单校验 + 统一 LIMIT）。
+    返回：规范化后的 sql + 结果 df
+    """
+    cfg = cfg or _load_orchestrator_config()
+    schema = load_table_schema(conn, table=DEFAULT_SQLITE_TABLE)
+
+    sql_norm = _normalize_sql_for_sqlite(sql)
+    guard = validate_sql(
+        sql_norm,
+        allowed_tables=schema.allowed_table_aliases,
+        allowed_columns=set(schema.columns),
+        allow_with=cfg.allow_with,
+    )
+    if not guard.ok:
+        raise ValueError(f"SQL 校验失败：{guard.reason}")
+
+    sql_exec = rewrite_to_sqlite_table(sql_norm)
+    sql_exec = _apply_limit(sql_exec, cfg.max_rows)
+    df = query_df(conn, sql_exec)
+    return sql_norm, df
+
+
+def run_query_with_evidence(
+    *,
+    question: str,
+    conn: sqlite3.Connection,
+    cfg: OrchestratorConfig | None = None,
+    context: str | None = None,
+) -> tuple[str, pd.DataFrame, list[FollowupPlanItem], list[EvidenceQuery]]:
+    """
+    主查询 + 自动 follow-up 取证查询（用于“自己推理并引用证据”）。
+    """
+    cfg = cfg or _load_orchestrator_config()
+    schema = load_table_schema(conn, table=DEFAULT_SQLITE_TABLE)
+
+    # 召回字典候选（与 generate_sql 保持一致）
+    try:
+        fields = load_field_dictionary()
+        metrics = load_metric_dictionary(only_active=True)
+        field_hints = retrieve_field_hints(question, fields, limit=12)
+        metric_hints = retrieve_metric_hints(question, metrics, limit=8)
+    except Exception:
+        field_hints = []
+        metric_hints = []
+
+    # 1) 主查询
+    main_sql = generate_sql(question=question, conn=conn, cfg=cfg, context=context)
+    main_exec = _apply_limit(rewrite_to_sqlite_table(main_sql), cfg.max_rows)
+    main_df = query_df(conn, main_exec)
+
+    # 2) 基于主结果，生成 follow-up SQL（JSON）
+    preview_csv, cols, _ = _df_preview_csv(main_df, max_rows=cfg.max_rows_for_analysis, max_cols=cfg.max_cols_for_analysis)
+    p = build_followup_sql_prompt(
+        question=question,
+        schema=schema,
+        days_window=cfg.days_window,
+        main_sql=main_sql,
+        main_table_preview_csv=preview_csv,
+        main_columns=cols,
+        field_hints=field_hints,
+        metric_hints=metric_hints,
+        max_followups=cfg.max_followup_queries,
+    )
+    llm_cfg = load_llm_config()
+    raw = chat_completion(
+        cfg=llm_cfg,
+        messages=[
+            {"role": "system", "content": p.system},
+            {"role": "user", "content": p.user},
+        ],
+        temperature=0.0,
+    )
+    obj = _safe_json_loads(raw)
+    followups = obj.get("followups") if isinstance(obj, dict) else None
+    if not isinstance(followups, list):
+        followups = []
+
+    plan: list[FollowupPlanItem] = []
+    evidence: list[EvidenceQuery] = []
+    for it in followups[: int(cfg.max_followup_queries)]:
+        if not isinstance(it, dict):
+            continue
+        purpose = str(it.get("purpose") or "").strip() or "补充取证"
+        sql = str(it.get("sql") or "").strip()
+        if not sql:
+            continue
+
+        sql_norm = _normalize_sql_for_sqlite(sql)
+        guard = validate_sql(
+            sql_norm,
+            allowed_tables=schema.allowed_table_aliases,
+            allowed_columns=set(schema.columns),
+            allow_with=cfg.allow_with,
+        )
+        if not guard.ok:
+            # follow-up 失败不阻塞主流程
+            plan.append(FollowupPlanItem(purpose=purpose, sql=sql_norm, ok=False, reason=guard.reason))
+            continue
+
+        sql_exec = _apply_limit(rewrite_to_sqlite_table(sql_norm), cfg.max_rows)
+        df = query_df(conn, sql_exec)
+        evidence.append(EvidenceQuery(purpose=purpose, sql=sql_norm, df=df))
+        plan.append(FollowupPlanItem(purpose=purpose, sql=sql_norm, ok=True))
+
+    return main_sql, main_df, plan, evidence
 
 
 def run_question(*, question: str, conn: sqlite3.Connection, cfg: OrchestratorConfig | None = None) -> tuple[str, pd.DataFrame, str]:
@@ -184,6 +337,50 @@ def generate_conclusion(*, question: str, sql: str, df: pd.DataFrame, cfg: Orche
         table_preview_csv=preview_csv,
         columns=cols,
         row_count=row_count,
+    )
+    return chat_completion(
+        cfg=llm_cfg,
+        messages=[
+            {"role": "system", "content": p.system},
+            {"role": "user", "content": p.user},
+        ],
+        temperature=0.2,
+    )
+
+
+def generate_conclusion_with_evidence(
+    *,
+    question: str,
+    main_sql: str,
+    main_df: pd.DataFrame,
+    evidence: list[EvidenceQuery],
+    cfg: OrchestratorConfig | None = None,
+) -> str:
+    cfg = cfg or _load_orchestrator_config()
+    llm_cfg = load_llm_analysis_config()
+
+    main_csv, main_cols, main_rows = _df_preview_csv(main_df, max_rows=cfg.max_rows_for_analysis, max_cols=cfg.max_cols_for_analysis)
+
+    blocks: list[dict[str, str]] = []
+    for ev in evidence:
+        csv_text, cols, row_count = _df_preview_csv(ev.df, max_rows=cfg.max_rows_for_analysis, max_cols=cfg.max_cols_for_analysis)
+        blocks.append(
+            {
+                "purpose": ev.purpose,
+                "sql": ev.sql,
+                "columns": ", ".join(cols),
+                "row_count": str(row_count),
+                "csv": csv_text,
+            }
+        )
+
+    p = build_analysis_prompt_with_evidence(
+        question=question,
+        main_sql=main_sql,
+        main_table_preview_csv=main_csv,
+        main_columns=main_cols,
+        main_row_count=main_rows,
+        evidence_blocks=blocks,
     )
     return chat_completion(
         cfg=llm_cfg,
